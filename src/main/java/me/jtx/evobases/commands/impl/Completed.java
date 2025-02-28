@@ -1,190 +1,260 @@
-    package me.jtx.evobases.commands.impl;
+package me.jtx.evobases.commands.impl;
 
-    import com.google.gson.JsonArray;
-    import com.google.gson.JsonObject;
-    import me.jtx.evobases.EvoBases;
-    import me.jtx.evobases.commands.Command;
-    import me.jtx.evobases.commands.CommandContext;
-    import net.dv8tion.jda.api.EmbedBuilder;
-    import net.dv8tion.jda.api.Permission;
-    import net.dv8tion.jda.api.entities.Message;
-    import net.dv8tion.jda.api.entities.MessageEmbed;
-    import net.dv8tion.jda.api.entities.User;
-    import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-    import net.dv8tion.jda.api.entities.emoji.Emoji;
-    import net.dv8tion.jda.api.interactions.commands.OptionType;
-    import net.dv8tion.jda.api.interactions.commands.build.OptionData;
-    import net.dv8tion.jda.api.interactions.components.buttons.Button;
-    import net.dv8tion.jda.api.utils.FileUpload;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import me.jtx.evobases.EvoBases;
+import me.jtx.evobases.commands.Command;
+import me.jtx.evobases.commands.CommandContext;
+import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.Permission;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.emoji.Emoji;
+import net.dv8tion.jda.api.interactions.commands.OptionType;
+import net.dv8tion.jda.api.interactions.commands.build.OptionData;
+import net.dv8tion.jda.api.interactions.components.buttons.Button;
+import net.dv8tion.jda.api.utils.FileUpload;
 
-    import java.awt.*;
-    import java.util.List;
+import java.awt.*;
+import java.util.List;
 
-    public class Completed extends Command {
+/**
+ * Command implementation for marking orders as completed.
+ * Handles the completion process including:
+ * - Updating order status
+ * - Moving order to completed channel
+ * - Creating base showcase post
+ * - Sending completion notification to customer
+ * Requires base designer role to execute.
+ */
+public class Completed extends Command {
 
-        private final EvoBases bot;
+    private final EvoBases bot;
+    private static final String LINK_EMOJI = "U+1F517";
 
-        public Completed(EvoBases bot) {
-            super("completed", Permission.UNKNOWN, null, "confirm order completed", null);
+    /**
+     * Constructs a new Completed command.
+     * Sets up required command options for order completion.
+     *
+     * @param bot The EvoBases bot instance
+     */
+    public Completed(EvoBases bot) {
+        super("completed", 
+              Permission.UNKNOWN, 
+              null, 
+              "Mark an order as completed and process completion actions", 
+              null);
 
-            this.getSlashOptions().add(new OptionData(OptionType.INTEGER, "orderid", "The order id that you completed", true));
-            this.getSlashOptions().add(new OptionData(OptionType.ATTACHMENT, "image", "base image", true));
-            this.getSlashOptions().add(new OptionData(OptionType.STRING, "baselink", "base link", true));
-            this.bot = bot;
-            this.bot.getCommandManager().register(this);
+        this.bot = bot;
+        
+        // Add required command options
+        this.getSlashOptions().add(new OptionData(
+            OptionType.INTEGER, 
+            "orderid", 
+            "The ID of the completed order", 
+            true));
+            
+        this.getSlashOptions().add(new OptionData(
+            OptionType.ATTACHMENT, 
+            "image", 
+            "The completed base image", 
+            true));
+            
+        this.getSlashOptions().add(new OptionData(
+            OptionType.STRING, 
+            "baselink", 
+            "Link to download the base", 
+            true));
+            
+        this.bot.getCommandManager().register(this);
+    }
 
+    /**
+     * Executes the completed command.
+     * Processes the order completion workflow.
+     *
+     * @param ctx The command context
+     */
+    @Override
+    public void execute(CommandContext ctx) {
+        // Check if user has base designer role
+        boolean hasBaseDesignerRole = ctx.getGuild().getMember(ctx.getUser()).getRoles().stream()
+                .anyMatch(role -> role.getId().equals(bot.getBaseDesignerRoleId()));
+
+        if (!hasBaseDesignerRole) {
+            sendErrorMessage(ctx, "You do not have permission to complete orders!");
+            return;
         }
 
-        @Override
-        public void execute(CommandContext e) {
-            boolean baseDesignRole = e.getGuild().getMember(e.getUser()).getRoles().stream()
-                    .anyMatch(role -> role.getId().equals(bot.getBaseDesignerRoleId()));
+        // Get command options
+        int orderId = ctx.getSlashEvent().getOption("orderid").getAsInt();
+        Message.Attachment image = ctx.getSlashEvent().getOption("image").getAsAttachment();
+        String baseLink = ctx.getSlashEvent().getOption("baselink").getAsString();
 
-            if (!baseDesignRole) {
-                EmbedBuilder noPermEB = new EmbedBuilder();
-                noPermEB.setTitle("Error")
-                        .setDescription("You do not have permission!")
-                        .setColor(Color.RED)
-                        .setFooter(bot.getEmbedDetails().footer);
+        if (!bot.getOrderDetail().orderIdExists(orderId)) {
+            ctx.getSlashEvent().reply("Order not found.").setEphemeral(true).queue();
+            return;
+        }
 
-                e.getSlashEvent().replyEmbeds(noPermEB.build()).setEphemeral(true).queue();
-                return;
-            }
-            int orderId = e.getSlashEvent().getOption("orderid").getAsInt();
-            Message.Attachment image = e.getSlashEvent().getOption("image").getAsAttachment();
-            String baseLink = e.getSlashEvent().getOption("baselink").getAsString();
+        // Process order completion
+        String userId = bot.getOrderDetail().getUserIdByOrderId(orderId);
+        TextChannel orderChannel = ctx.getSlashEvent().getJDA().getTextChannelById(bot.getOrderChannelId());
+        
+        // Mark order as completed
+        bot.getOrderDetail().setCompleted(orderId);
+        ctx.getSlashEvent().reply("Order #" + orderId + " completed successfully.").setEphemeral(true).queue();
 
-            String userId = bot.getOrderDetail().getUserIdByOrderId(orderId);
+        // Update and move original order message
+        updateOriginalOrderMessage(ctx, orderId, orderChannel);
 
-            TextChannel channel = e.getSlashEvent().getJDA().getTextChannelById(bot.getOrderChannelId());
+        // Create base showcase post
+        createBaseShowcasePost(ctx, userId, image, baseLink);
+    }
 
-            if (bot.getOrderDetail().orderIdExists(orderId)) {
-                bot.getOrderDetail().setCompleted(orderId);
-                e.getSlashEvent().reply("Order #" + orderId + " completed successfully.").setEphemeral(true).queue();
+    /**
+     * Sends an error message to the user.
+     *
+     * @param ctx The command context
+     * @param errorMessage The error message to display
+     */
+    private void sendErrorMessage(CommandContext ctx, String errorMessage) {
+        EmbedBuilder errorEmbed = new EmbedBuilder();
+        errorEmbed.setTitle("Error")
+                 .setDescription(errorMessage)
+                 .setColor(Color.RED)
+                 .setFooter(bot.getEmbedDetails().footer);
 
-                String originalMessageId = bot.getOrderDetail().getMessageIdByOrderId(orderId);
+        ctx.getSlashEvent().replyEmbeds(errorEmbed.build()).setEphemeral(true).queue();
+    }
 
-                if (originalMessageId != null) {
-                    channel.retrieveMessageById(originalMessageId).queue(originalMessage -> {
-                        EmbedBuilder updatedEmbed = new EmbedBuilder(originalMessage.getEmbeds().get(0));
-                        updatedEmbed.clearFields();
+    /**
+     * Updates and moves the original order message to completed channel.
+     *
+     * @param ctx The command context
+     * @param orderId The ID of the completed order
+     * @param orderChannel The channel containing the original order
+     */
+    private void updateOriginalOrderMessage(CommandContext ctx, int orderId, TextChannel orderChannel) {
+        String originalMessageId = bot.getOrderDetail().getMessageIdByOrderId(orderId);
+        if (originalMessageId == null) return;
 
-                        originalMessage.getEmbeds().get(0).getFields().forEach(field -> {
-                            if (field.getName().equalsIgnoreCase("Completed")) {
-                                updatedEmbed.addField("Completed", "true", true);
-                            } else {
-                                updatedEmbed.addField(field);
-                            }
-                        });
-                        updatedEmbed.setColor(Color.GREEN);
+        orderChannel.retrieveMessageById(originalMessageId).queue(originalMessage -> {
+            EmbedBuilder updatedEmbed = new EmbedBuilder(originalMessage.getEmbeds().get(0));
+            updatedEmbed.clearFields();
 
-                        originalMessage.delete().queue();
-
-                        TextChannel completedOrdersChannel = e.getSlashEvent().getJDA().getTextChannelById("1286019263655706634");
-                        completedOrdersChannel.sendMessageEmbeds(updatedEmbed.build()).queue();
-
-
-
-/*
-                        originalMessage.editMessageEmbeds(updatedEmbed.setColor(Color.GREEN).build()).queue();
-*/
-                    });
+            // Update completion status in embed fields
+            originalMessage.getEmbeds().get(0).getFields().forEach(field -> {
+                if (field.getName().equalsIgnoreCase("Completed")) {
+                    updatedEmbed.addField("Completed", "true", true);
+                } else {
+                    updatedEmbed.addField(field);
                 }
-                TextChannel userBase = e.getSlashEvent().getJDA().getTextChannelById(bot.getBaseShowcaseChannelId());
+            });
+            updatedEmbed.setColor(Color.GREEN);
 
-                /*userBase.sendMessage("Base for <@" + userId + "> \nDesigned by: " + e.getUser().getEffectiveName())
-                        .addFiles(FileUpload.fromData(image.getProxy().download().join(), image.getFileName()))
-                        .addActionRow(Button.secondary("link:", "Link").withEmoji(Emoji.fromUnicode("U+1F517")).withUrl(baseLink))
-                        .addActionRow(Button.secondary("downloads:", "Downloads")).queue(message -> {
-                            String messageLink = "https://discord.com/channels/" + userBase.getGuild().getId() + "/" + userBase.getId() + "/" + message.getId();
-                            EmbedBuilder embed = new EmbedBuilder();
-                            embed.setTitle(bot.getOrderCompletedTitle());
-                            embed.setDescription(bot.getOrderCompletedMessage().replace("%base-link%", messageLink))
-                                    .setColor(Color.decode(bot.getOrderCompletedEmbedColorHex()))
-                                    .setImage(bot.getOrderCompletedEmbedImage());
+            // Delete original and move to completed channel
+            originalMessage.delete().queue();
+            TextChannel completedChannel = ctx.getSlashEvent().getJDA().getTextChannelById("1286019263655706634");
+            completedChannel.sendMessageEmbeds(updatedEmbed.build()).queue();
+        });
+    }
 
-                            if (e.getSlashEvent().getJDA().getUserById(userId) != null) {
-                                e.getSlashEvent().getJDA().getUserById(userId).openPrivateChannel().flatMap(privateChannel ->
-                                        privateChannel.sendMessageEmbeds(embed.build())
-                                ).queue();
-                            }
-                        });*/
+    /**
+     * Creates a showcase post for the completed base.
+     *
+     * @param ctx The command context
+     * @param userId The ID of the user who ordered the base
+     * @param image The completed base image
+     * @param baseLink The download link for the base
+     */
+    private void createBaseShowcasePost(CommandContext ctx, String userId, Message.Attachment image, String baseLink) {
+        TextChannel showcaseChannel = ctx.getSlashEvent().getJDA().getTextChannelById(bot.getBaseShowcaseChannelId());
+        
+        showcaseChannel.sendMessage("Base for <@" + userId + "> \nDesigned by: " + ctx.getUser().getEffectiveName())
+                .addFiles(FileUpload.fromData(image.getProxy().download().join(), image.getFileName()))
+                .addActionRow(
+                    Button.secondary("link:", "Link").withEmoji(Emoji.fromUnicode(LINK_EMOJI)),
+                    Button.secondary("downloads:", "Downloads")
+                )
+                .queue(message -> {
+                    // Save base details
+                    JsonObject baseData = new JsonObject();
+                    baseData.addProperty("messageId", message.getId());
+                    baseData.addProperty("downloadCount", 0);
+                    baseData.addProperty("baseLink", baseLink);
+                    baseData.add("uniqueUsers", new JsonArray());
 
-                userBase.sendMessage("Base for <@" + userId + "> \nDesigned by: " + e.getUser().getEffectiveName())
-                        .addFiles(FileUpload.fromData(image.getProxy().download().join(), image.getFileName()))
-                        .addActionRow(
-                                Button.secondary("link:", "Link").withEmoji(Emoji.fromUnicode("U+1F517")),
-                                Button.secondary("downloads:", "Downloads"))
-                        .queue(message -> {
+                    bot.getOrderEmbedDetails().addEmbedData(message.getId(), baseData);
+                    bot.getOrderEmbedDetails().saveEmbedData();
 
+                    // Send completion notification to customer
+                    sendCompletionNotification(ctx, userId, message, showcaseChannel);
+                });
+    }
 
-                            JsonObject data = new JsonObject();
-                            data.addProperty("messageId", message.getId());
-                            data.addProperty("downloadCount", 0);
-                            data.addProperty("baseLink", baseLink);
+    /**
+     * Sends a completion notification to the customer.
+     *
+     * @param ctx The command context
+     * @param userId The ID of the user to notify
+     * @param showcaseMessage The showcase message
+     * @param showcaseChannel The channel containing the showcase
+     */
+    private void sendCompletionNotification(CommandContext ctx, String userId, Message showcaseMessage, TextChannel showcaseChannel) {
+        String messageLink = String.format("https://discord.com/channels/%s/%s/%s",
+                showcaseChannel.getGuild().getId(),
+                showcaseChannel.getId(),
+                showcaseMessage.getId());
 
-                            JsonArray uniqueUsers = new JsonArray();
-                            data.add("uniqueUsers", uniqueUsers);
+        EmbedBuilder notificationEmbed = new EmbedBuilder();
+        notificationEmbed.setTitle(bot.getOrderCompletedTitle())
+                        .setDescription(bot.getOrderCompletedMessage().replace("%base-link%", messageLink))
+                        .setColor(Color.decode(bot.getOrderCompletedEmbedColorHex()))
+                        .setImage(bot.getOrderCompletedEmbedImage());
 
-                            bot.getOrderEmbedDetails().addEmbedData(message.getId(), data);
-                            bot.getOrderEmbedDetails().saveEmbedData();
-                            String messageLink = "https://discord.com/channels/" + userBase.getGuild().getId() + "/" + userBase.getId() + "/" + message.getId();
-
-                            EmbedBuilder embed = new EmbedBuilder();
-                            embed.setTitle(bot.getOrderCompletedTitle());
-                            embed.setDescription(bot.getOrderCompletedMessage().replace("%base-link%", messageLink))
-                                    .setColor(Color.decode(bot.getOrderCompletedEmbedColorHex()))
-                                    .setImage(bot.getOrderCompletedEmbedImage());
-
-                            if (e.getSlashEvent().getJDA().getUserById(userId) != null) {
-                                e.getSlashEvent().getJDA().getUserById(userId).openPrivateChannel().flatMap(privateChannel ->
-                                        privateChannel.sendMessageEmbeds(embed.build())
-                                ).queue();
-                            }
-                        });
-
-                /**
-                 * TODO fix board
-                 */
-                /*TextChannel queueChannel = e.getSlashEvent().getJDA().getTextChannelById(bot.getQueueChannelId());
-                queueChannel.retrieveMessageById(bot.getQueueMessageId()).queue(message -> {
-                    message.editMessageEmbeds(createQueueEmbed(e)).queue();
-                });*/
-
-
-            } else {
-                e.getSlashEvent().reply("Order not found.").setEphemeral(true).queue();
-            }
-        }
-
-        private MessageEmbed createQueueEmbed(CommandContext e) {
-            List<JsonObject> incompleteOrders = bot.getOrderDetail().getIncompleteOrders();
-
-            EmbedBuilder embed = new EmbedBuilder();
-            StringBuilder stringBuilder = new StringBuilder();
-
-            if (incompleteOrders.isEmpty()) {
-                embed.setTitle("Current Queue")
-                        .setColor(Color.WHITE)
-                        .setDescription("The queue is currently empty.")
-                        .setFooter(bot.getEmbedDetails().footer);
-                return embed.build();
-            }
-
-            for (JsonObject order : incompleteOrders) {
-                String userId = order.get("userId").getAsString();
-                int queueNum = order.get("queueNum").getAsInt();
-                User user = e.getUser().getJDA().getUserById(userId);
-
-                stringBuilder.append("**#").append(queueNum).append("** ").append("<@")
-                        .append(userId).append("> [").append(user.getName()).append("]\n");
-            }
-
-            embed.setTitle("Current Queue")
-                    .setColor(Color.WHITE)
-                    .setDescription(stringBuilder.toString())
-                    .setFooter(bot.getEmbedDetails().footer);
-
-            return embed.build();
+        User customer = ctx.getSlashEvent().getJDA().getUserById(userId);
+        if (customer != null) {
+            customer.openPrivateChannel()
+                   .flatMap(channel -> channel.sendMessageEmbeds(notificationEmbed.build()))
+                   .queue();
         }
     }
+
+    /**
+     * Creates an embed displaying the current queue status.
+     *
+     * @param ctx The command context
+     * @return The queue status embed
+     */
+    private MessageEmbed createQueueEmbed(CommandContext ctx) {
+        List<JsonObject> incompleteOrders = bot.getOrderDetail().getIncompleteOrders();
+        EmbedBuilder embed = new EmbedBuilder();
+
+        if (incompleteOrders.isEmpty()) {
+            return embed.setTitle("Current Queue")
+                       .setColor(Color.WHITE)
+                       .setDescription("The queue is currently empty.")
+                       .setFooter(bot.getEmbedDetails().footer)
+                       .build();
+        }
+
+        StringBuilder queueList = new StringBuilder();
+        for (JsonObject order : incompleteOrders) {
+            String userId = order.get("userId").getAsString();
+            int queueNum = order.get("queueNum").getAsInt();
+            User user = ctx.getUser().getJDA().getUserById(userId);
+
+            queueList.append("**#").append(queueNum).append("** ")
+                    .append("<@").append(userId).append("> [")
+                    .append(user.getName()).append("]\n");
+        }
+
+        return embed.setTitle("Current Queue")
+                   .setColor(Color.WHITE)
+                   .setDescription(queueList.toString())
+                   .setFooter(bot.getEmbedDetails().footer)
+                   .build();
+    }
+}

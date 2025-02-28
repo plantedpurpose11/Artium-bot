@@ -11,41 +11,66 @@ import net.dv8tion.jda.api.interactions.modals.Modal;
 
 import java.awt.*;
 
+/**
+ * Command implementation for submitting order reviews.
+ * Creates a modal dialog with rating and feedback inputs.
+ * Allows users to provide a star rating and written feedback for their orders.
+ */
 public class Review extends Command {
 
     private final EvoBases bot;
+    private static final String RATING_FIELD_ID = "ratingNumber";
+    private static final String REVIEW_FIELD_ID = "review";
+    private static final String MODAL_ID = "reviewModal";
 
+    /**
+     * Constructs a new Review command.
+     *
+     * @param bot The EvoBases bot instance
+     */
     public Review(EvoBases bot) {
-        super("review", Permission.UNKNOWN, null, "post a review of your order", null);
+        super("review", 
+              Permission.UNKNOWN, 
+              null, 
+              "Submit a review for your completed order", 
+              null);
 
         this.bot = bot;
         this.bot.getCommandManager().register(this);
     }
 
+    /**
+     * Executes the review command.
+     * Creates and displays a modal with rating and feedback inputs.
+     *
+     * @param ctx The command context
+     */
     @Override
-    public void execute(CommandContext e) {
-
-        TextInput stars = TextInput.create("ratingNumber", "Rating Number", TextInputStyle.SHORT)
+    public void execute(CommandContext ctx) {
+        // Create the star rating input field
+        TextInput ratingInput = TextInput.create(RATING_FIELD_ID, "Rating", TextInputStyle.SHORT)
                 .setRequired(true)
-                .setPlaceholder("Rate from 1 to 5!")
+                .setMinLength(1)
+                .setMaxLength(1)
+                .setPlaceholder("Rate from 1 to 5 stars")
                 .build();
 
-        TextInput review = TextInput.create("review", "Feedback", TextInputStyle.PARAGRAPH)
+        // Create the feedback text input field
+        TextInput feedbackInput = TextInput.create(REVIEW_FIELD_ID, "Feedback", TextInputStyle.PARAGRAPH)
                 .setRequired(true)
-                .setPlaceholder("Write your feedback here!")
+                .setMinLength(10)
+                .setMaxLength(1000)
+                .setPlaceholder("Please share your experience with the order")
                 .build();
 
-
-        Modal modal = Modal.create("reviewModal", "Order Review")
-                .addComponents(ActionRow.of(stars), ActionRow.of(review))
+        // Create and show the review modal
+        Modal reviewModal = Modal.create(MODAL_ID, "Order Review")
+                .addComponents(
+                    ActionRow.of(ratingInput),
+                    ActionRow.of(feedbackInput)
+                )
                 .build();
 
-        e.getSlashEvent().replyModal(modal).queue();
-
-
-
-
-
-
+        ctx.getSlashEvent().replyModal(reviewModal).queue();
     }
 }

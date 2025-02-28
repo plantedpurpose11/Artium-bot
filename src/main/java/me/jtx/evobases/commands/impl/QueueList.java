@@ -17,107 +17,169 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Command implementation for viewing the queue list.
+ * Supports viewing the full queue with pagination or checking a specific user's position.
+ * Provides interactive navigation through pages using buttons.
+ */
 public class QueueList extends Command {
 
     private final EvoBases bot;
-    private final ConcurrentMap<String, Integer> pageStates = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Integer> pageStates;
+    private static final int ITEMS_PER_PAGE = 10;
 
-
+    /**
+     * Constructs a new QueueList command.
+     * Sets up the command with options for mentioning specific users.
+     *
+     * @param bot The EvoBases bot instance
+     */
     public QueueList(EvoBases bot) {
-        super("queue", Permission.UNKNOWN, null, "view queue list", null);
+        super("queue", 
+              Permission.UNKNOWN, 
+              null, 
+              "View the current queue list or check a specific user's position", 
+              null);
 
-        this.getSlashOptions().add(new OptionData(OptionType.MENTIONABLE, "usertag", "View the user's queue place", false));
         this.bot = bot;
+        this.pageStates = new ConcurrentHashMap<>();
+        
+        // Add option for mentioning a specific user
+        this.getSlashOptions().add(new OptionData(
+            OptionType.MENTIONABLE, 
+            "usertag", 
+            "View the user's queue place", 
+            false));
+            
         this.bot.getCommandManager().register(this);
     }
 
+    /**
+     * Executes the queue list command.
+     * Handles both full queue view and specific user lookup.
+     *
+     * @param ctx The command context
+     */
     @Override
-    public void execute(CommandContext e) {
+    public void execute(CommandContext ctx) {
         List<JsonObject> incompleteOrders = bot.getOrderDetail().getIncompleteOrders();
 
         if (incompleteOrders.isEmpty()) {
-            e.getSlashEvent().reply("The queue is currently empty.").setEphemeral(true).queue();
+            ctx.getSlashEvent().reply("The queue is currently empty.").setEphemeral(true).queue();
             return;
         }
 
-        User mentionedUser = e.getSlashEvent().getOption("usertag") != null ? e.getSlashEvent().getOption("usertag").getAsUser() : null;
+        User mentionedUser = ctx.getSlashEvent().getOption("usertag") != null 
+            ? ctx.getSlashEvent().getOption("usertag").getAsUser() 
+            : null;
+            
         if (mentionedUser != null) {
-            handleUserQueue(e, incompleteOrders, mentionedUser);
+            handleUserQueue(ctx, incompleteOrders, mentionedUser);
         } else {
-            handleFullQueue(e, incompleteOrders, 1);
+            handleFullQueue(ctx, incompleteOrders, 1);
         }
     }
 
-    private void handleUserQueue(CommandContext e, List<JsonObject> incompleteOrders, User mentionedUser) {
-        StringBuilder stringBuilder = new StringBuilder();
+    /**
+     * Handles displaying queue information for a specific user.
+     *
+     * @param ctx The command context
+     * @param incompleteOrders List of incomplete orders
+     * @param mentionedUser The user to look up
+     */
+    private void handleUserQueue(CommandContext ctx, List<JsonObject> incompleteOrders, User mentionedUser) {
+        StringBuilder queueInfo = new StringBuilder();
 
+        // Find all orders for the mentioned user
         for (JsonObject order : incompleteOrders) {
             String userId = order.get("userId").getAsString();
             if (userId.equals(mentionedUser.getId())) {
                 int queueNum = order.get("queueNum").getAsInt();
-                stringBuilder.append("**#").append(queueNum).append("** ")
-                        .append("<@").append(userId).append("> [").append(mentionedUser.getName()).append("]\n");
+                queueInfo.append("**#").append(queueNum).append("** ")
+                        .append("<@").append(userId).append("> [")
+                        .append(mentionedUser.getName()).append("]\n");
             }
         }
 
-        if (stringBuilder.isEmpty()) {
-            e.getSlashEvent().reply("The mentioned user has no orders in the queue.").setEphemeral(true).queue();
+        if (queueInfo.isEmpty()) {
+            ctx.getSlashEvent().reply("The mentioned user has no orders in the queue.")
+                .setEphemeral(true)
+                .queue();
         } else {
-            EmbedBuilder eb = new EmbedBuilder();
-            eb.setTitle(mentionedUser.getEffectiveName() + " Current Queue")
-                    .setColor(Color.WHITE)
-                    .setDescription(stringBuilder.toString())
-                    .setFooter(bot.getEmbedDetails().footer);
-            e.getSlashEvent().replyEmbeds(eb.build()).queue();
+            EmbedBuilder embed = new EmbedBuilder();
+            embed.setTitle(mentionedUser.getEffectiveName() + "'s Current Queue")
+                 .setColor(Color.WHITE)
+                 .setDescription(queueInfo.toString())
+                 .setFooter(bot.getEmbedDetails().footer);
+                 
+            ctx.getSlashEvent().replyEmbeds(embed.build()).queue();
         }
     }
 
-    public void handleFullQueue(CommandContext e, List<JsonObject> incompleteOrders, int pageNumber) {
-        StringBuilder stringBuilder = new StringBuilder();
-        int itemsPerPage = 10;
-        int totalPages = (int) Math.ceil((double) incompleteOrders.size() / itemsPerPage);
-
-        int startIndex = (pageNumber - 1) * itemsPerPage;
-        int endIndex = Math.min(startIndex + itemsPerPage, incompleteOrders.size());
+    /**
+     * Handles displaying a page of the full queue.
+     *
+     * @param ctx The command context
+     * @param incompleteOrders List of incomplete orders
+     * @param pageNumber The page number to display
+     */
+    public void handleFullQueue(CommandContext ctx, List<JsonObject> incompleteOrders, int pageNumber) {
+        int totalPages = (int) Math.ceil((double) incompleteOrders.size() / ITEMS_PER_PAGE);
+        int startIndex = (pageNumber - 1) * ITEMS_PER_PAGE;
+        int endIndex = Math.min(startIndex + ITEMS_PER_PAGE, incompleteOrders.size());
 
         if (startIndex < 0 || endIndex > incompleteOrders.size() || startIndex >= endIndex) {
-            e.reply("Please run /queue");
+            ctx.reply("Invalid page number. Please run /queue to start from the beginning.");
+            return;
         }
 
+        // Build the queue list for the current page
+        StringBuilder queueList = new StringBuilder();
         for (int i = startIndex; i < endIndex; i++) {
             JsonObject order = incompleteOrders.get(i);
             String userId = order.get("userId").getAsString();
             int queueNum = order.get("queueNum").getAsInt();
-            User user = e.getJDA().retrieveUserById(userId).complete();
+            User user = ctx.getJDA().retrieveUserById(userId).complete();
+            
             if (user != null) {
-                stringBuilder.append("**#").append(queueNum).append("** ")
-                        .append("<@").append(userId).append("> [").append(user.getName()).append("]\n");
+                queueList.append("**#").append(queueNum).append("** ")
+                        .append("<@").append(userId).append("> [")
+                        .append(user.getName()).append("]\n");
             }
         }
 
-        EmbedBuilder eb = new EmbedBuilder();
-        eb.setTitle("Current Queue - Page " + pageNumber + "/" + totalPages)
-                .setColor(Color.WHITE)
-                .setDescription(stringBuilder.toString())
-                .setFooter(bot.getEmbedDetails().footer);
+        // Create and configure the embed
+        EmbedBuilder embed = new EmbedBuilder();
+        embed.setTitle("Current Queue - Page " + pageNumber + "/" + totalPages)
+             .setColor(Color.WHITE)
+             .setDescription(queueList.toString())
+             .setFooter(bot.getEmbedDetails().footer);
 
-        if (e.isSlash()) {
-            e.getSlashEvent().replyEmbeds(eb.build())
-                    .addActionRow(
-                            Button.primary("prev", "Previous Page").withDisabled(pageNumber == 1),
-                            Button.primary("next", "Next Page").withDisabled(pageNumber == totalPages)
-                    ).queue();
-        } else if (e.getButtonEvent() != null) {
-            e.getButtonEvent().editMessageEmbeds(eb.build())
-                    .setActionRow(
-                            Button.primary("prev", "Previous Page").withDisabled(pageNumber == 1),
-                            Button.primary("next", "Next Page").withDisabled(pageNumber == totalPages)
-                    ).queue();
+        // Create navigation buttons
+        Button prevButton = Button.primary("prev", "Previous Page").withDisabled(pageNumber == 1);
+        Button nextButton = Button.primary("next", "Next Page").withDisabled(pageNumber == totalPages);
+
+        // Send or update the message based on interaction type
+        if (ctx.isSlash()) {
+            ctx.getSlashEvent().replyEmbeds(embed.build())
+               .addActionRow(prevButton, nextButton)
+               .queue();
+        } else if (ctx.getButtonEvent() != null) {
+            ctx.getButtonEvent().editMessageEmbeds(embed.build())
+               .setActionRow(prevButton, nextButton)
+               .queue();
         }
 
-        pageStates.put(e.getUser().getId(), pageNumber);
+        // Store the current page state for this user
+        pageStates.put(ctx.getUser().getId(), pageNumber);
     }
 
+    /**
+     * Gets the current page state for a user.
+     *
+     * @param userId The ID of the user
+     * @return The current page number, defaulting to 1 if not set
+     */
     public int getPageState(String userId) {
         return pageStates.getOrDefault(userId, 1);
     }
