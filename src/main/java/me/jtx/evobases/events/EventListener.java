@@ -242,7 +242,7 @@ public class EventListener extends ListenerAdapter {
             boolean hasSpecialRole = event.getGuild().getMember(event.getUser()).getRoles().stream()
                     .anyMatch(role -> role.getId().equals(bot.getSpecialRoleId()));
 
-            if (bot.getCooldown().isOnCooldown(userId) && !hasSpecialRole){
+            if (bot.getCooldown().isOnCooldown(userId) /*&& !hasSpecialRole*/){
                 long remainingTime = bot.getCooldown().getRemainingCooldownTime(userId);
                 String formattedTime = bot.getCooldown().formatCooldownTime(remainingTime);
 
@@ -295,7 +295,7 @@ public class EventListener extends ListenerAdapter {
                 bot.getDailyOrderLimit().setResetTime(LocalDateTime.now().plusDays(1));
             }
 
-            if (!hasSpecialRole && bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate()) >= bot.getDailyOrderMaxLimit()) {
+            if (/*!hasSpecialRole &&*/ bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate()) >= bot.getDailyOrderMaxLimit()) {
                 EmbedBuilder limitReachedEB = new EmbedBuilder();
                 limitReachedEB.setTitle("Error")
                         .setDescription("Sorry, the daily limit has been reached " + bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate())
@@ -347,9 +347,9 @@ public class EventListener extends ListenerAdapter {
             ).queue(message -> {
                 bot.getOrderDetail().addOrder(userId, message.getId(), hasSpecialRole);
 
-                if (!hasSpecialRole) {
-                    bot.getDailyOrderLimit().incrementOrderCount(bot.getGlobal().todayDate());
-                }
+//                if (!hasSpecialRole) {
+//                    bot.getDailyOrderLimit().incrementOrderCount(bot.getGlobal().todayDate());
+//                }
 
                 bot.getOrderDetail().saveOrder();
 
@@ -442,9 +442,9 @@ public class EventListener extends ListenerAdapter {
                     boolean hasSpecialRole = event.getGuild().getMemberById(userId).getRoles().stream()
                             .anyMatch(role -> role.getId().equals(bot.getSpecialRoleId()));
 
-                    if (!hasSpecialRole) {
-                        bot.getDailyOrderLimit().decrementOrderCount(bot.getGlobal().todayDate());
-                    }
+//                    if (!hasSpecialRole) {
+//                        bot.getDailyOrderLimit().decrementOrderCount(bot.getGlobal().todayDate());
+//                    }
                 }
 
 

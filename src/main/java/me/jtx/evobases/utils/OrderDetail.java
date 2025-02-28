@@ -76,12 +76,12 @@ public class OrderDetail {
         order.addProperty("completed", this.completed);
         order.addProperty("messageId", this.messageId);
 
-        if (hasSpecialRole) {
-            insertPriorityOrder(order);
-        } else {
-            orders.add(new Gson().toJsonTree(order));
-            recalculateQueuePositions();
-        }
+//        if (hasSpecialRole) {
+//            insertPriorityOrder(order);
+//        } else {
+        orders.add(new Gson().toJsonTree(order));
+        recalculateQueuePositions();
+        //}
         saveOrder();
     }
 
