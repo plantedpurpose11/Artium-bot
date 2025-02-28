@@ -290,20 +290,22 @@ public class EventListener extends ListenerAdapter {
             }
 
 
-            if (bot.getDailyOrderLimit().isResetTimePassed()) {
-                bot.getDailyOrderLimit().resetDailyLimit(bot.getGlobal().todayDate());
-                bot.getDailyOrderLimit().setResetTime(LocalDateTime.now().plusDays(1));
-            }
+            if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled()) {
+                if (bot.getDailyOrderLimit().isResetTimePassed()) {
+                    bot.getDailyOrderLimit().resetDailyLimit(bot.getGlobal().todayDate());
+                    bot.getDailyOrderLimit().setResetTime(LocalDateTime.now().plusDays(1));
+                }
 
-            if (/*!hasSpecialRole &&*/ bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate()) >= bot.getDailyOrderMaxLimit()) {
-                EmbedBuilder limitReachedEB = new EmbedBuilder();
-                limitReachedEB.setTitle("Error")
-                        .setDescription("Sorry, the daily limit has been reached " + bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate())
-                                + "/" + (bot.getDailyOrderMaxLimit()) + ". The daily limit resets in " + bot.getDailyOrderLimit().getResetTime() + ".")
-                        .setColor(Color.RED)
-                        .setFooter(bot.getEmbedDetails().footer);
-                event.replyEmbeds(limitReachedEB.build()).setEphemeral(true).queue();
-                return;
+                if (/*!hasSpecialRole &&*/ bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate()) >= bot.getDailyOrderMaxLimit()) {
+                    EmbedBuilder limitReachedEB = new EmbedBuilder();
+                    limitReachedEB.setTitle("Error")
+                            .setDescription("Sorry, the daily limit has been reached " + bot.getDailyOrderLimit().getCurrentOrderCount(bot.getGlobal().todayDate())
+                                    + "/" + (bot.getDailyOrderMaxLimit()) + ". The daily limit resets in " + bot.getDailyOrderLimit().getResetTime() + ".")
+                            .setColor(Color.RED)
+                            .setFooter(bot.getEmbedDetails().footer);
+                    event.replyEmbeds(limitReachedEB.build()).setEphemeral(true).queue();
+                    return;
+                }
             }
 
             int orderNum =  bot.getOrderDetail().getHighestOrderNum() + 1;
@@ -347,8 +349,10 @@ public class EventListener extends ListenerAdapter {
             ).queue(message -> {
                 bot.getOrderDetail().addOrder(userId, message.getId(), hasSpecialRole);
 
+
 //                if (!hasSpecialRole) {
-//                    bot.getDailyOrderLimit().incrementOrderCount(bot.getGlobal().todayDate());
+                if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled())
+                    bot.getDailyOrderLimit().incrementOrderCount(bot.getGlobal().todayDate());
 //                }
 
                 bot.getOrderDetail().saveOrder();
@@ -366,7 +370,9 @@ public class EventListener extends ListenerAdapter {
                     ).queue();
                 }
 
-                updateOrderMenuEmbed(event.getChannel().asTextChannel(), bot.getOrderMenuMessageId());
+                if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled()) {
+                    updateOrderMenuEmbed(event.getChannel().asTextChannel(), bot.getOrderMenuMessageId());
+                }
                 updateOrderStatus(event);
                 event.getHook().deleteOriginal().queue();
             });
@@ -443,7 +449,8 @@ public class EventListener extends ListenerAdapter {
                             .anyMatch(role -> role.getId().equals(bot.getSpecialRoleId()));
 
 //                    if (!hasSpecialRole) {
-//                        bot.getDailyOrderLimit().decrementOrderCount(bot.getGlobal().todayDate());
+                    if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled())
+                        bot.getDailyOrderLimit().decrementOrderCount(bot.getGlobal().todayDate());
 //                    }
                 }
 
@@ -454,7 +461,10 @@ public class EventListener extends ListenerAdapter {
                 event.reply("Order has been deleted!").setEphemeral(true).queue();
                 bot.getCooldown().removeCooldown(userId);
 
-                updateOrderMenuEmbed(event.getJDA().getTextChannelById(bot.getOrderMenuChannelId()), bot.getOrderMenuMessageId());
+                if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled()) {
+                    updateOrderMenuEmbed(event.getJDA().getTextChannelById(bot.getOrderMenuChannelId()), bot.getOrderMenuMessageId());
+                }
+
             });
         }
 
@@ -500,9 +510,11 @@ public class EventListener extends ListenerAdapter {
         }
         commands.queue();
 
-        if (bot.getDailyOrderLimit().getResetTime() == null) {
-            System.out.println("I was reset good or bad???");
-            bot.getDailyOrderLimit().setResetTime(LocalDateTime.now().plusDays(1));
+        if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled()) {
+            if (bot.getDailyOrderLimit().getResetTime() == null) {
+                System.out.println("I was reset good or bad???");
+                bot.getDailyOrderLimit().setResetTime(LocalDateTime.now().plusDays(1));
+            }
         }
     }
 

@@ -21,24 +21,27 @@ public class OrderMenu extends Command {
 
     }
 
+
     @Override
     public void execute(CommandContext e) {
-        String todayDate = bot.getGlobal().todayDate();
-        int currentCount = bot.getDailyOrderLimit().getCurrentOrderCount(todayDate);
-        int maxLimit = bot.getDailyOrderMaxLimit();
-
         EmbedBuilder eb = new EmbedBuilder();
         eb.setTitle(bot.getMenuTitle())
-                .setDescription(String.format(bot.getMenuDescription(), maxLimit, "\n"))
-                .addField("Current Count", currentCount + "/" + maxLimit, false)
+                .setDescription(bot.getMenuDescription())
                 .setColor(Color.WHITE)
                 .setFooter(bot.getEmbedDetails().footer);
+
+        if (bot.getDailyOrderLimit().isDailyOrderMaxLimitEnabled()) {
+            String todayDate = bot.getGlobal().todayDate();
+            int currentCount = bot.getDailyOrderLimit().getCurrentOrderCount(todayDate);
+            int maxLimit = bot.getDailyOrderMaxLimit();
+
+            eb.setDescription(String.format(bot.getMenuDescription(), maxLimit, "\n"));
+            eb.addField("Current Count", currentCount + "/" + maxLimit, false);
+        }
 
         e.getSlashEvent().deferReply().setEphemeral(true).queue();
 
         e.getTextChannel().sendMessageEmbeds(eb.build()).addActionRow(
                 Button.success("startOrderFormModal", bot.getMenuStartOrderButtonMessage())).queue();
     }
-
-
 }

@@ -133,4 +133,9 @@ public class DailyOrderLimit {
     public int getCurrentOrderCount(String date) {
         return dailyLimit.getOrDefault(date, 0);
     }
+
+    public boolean isDailyOrderMaxLimitEnabled() {
+        String enabledStr = System.getenv("DAILY_ORDER_MAX_LIMIT_ENABLE");
+        return "true".equalsIgnoreCase(enabledStr);
+    }
 }
