@@ -339,5 +339,21 @@ public class OrderDetail {
     public String getUserId() {
         return userId;
     }
+
+    /**
+     * Updates the message ID for a specific order.
+     *
+     * @param orderId The ID of the order to update
+     * @param newMessageId The new message ID to set
+     */
+    public void updateMessageId(int orderId, String newMessageId) {
+        for (JsonElement orderElement : orders) {
+            JsonObject order = orderElement.getAsJsonObject();
+            if (order.get("orderId").getAsInt() == orderId) {
+                order.addProperty("messageId", newMessageId);
+                break;
+            }
+        }
+    }
 }
 

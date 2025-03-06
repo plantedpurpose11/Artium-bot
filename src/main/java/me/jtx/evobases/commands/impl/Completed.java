@@ -154,11 +154,38 @@ public class Completed extends Command {
             });
             updatedEmbed.setColor(Color.GREEN);
 
-            // Delete original and move to completed channel
-            originalMessage.delete().queue();
-            TextChannel completedChannel = ctx.getSlashEvent().getJDA().getTextChannelById("1286019263655706634");
-            completedChannel.sendMessageEmbeds(updatedEmbed.build()).queue();
-        });
+            // Get the completed channel
+            TextChannel completedChannel = ctx.getSlashEvent().getJDA().getTextChannelById(bot.getCompletedChannelId());
+            if (completedChannel != null) {
+                // Send to completed channel first
+                completedChannel.sendMessageEmbeds(updatedEmbed.build())
+                    .queue(newMessage -> {
+                        // After successfully sending to completed channel, delete from original channel
+                        originalMessage.delete().queue(
+                            success -> {
+                                // Update order details after successful move
+                                bot.getOrderDetail().updateMessageId(orderId, newMessage.getId());
+                                bot.getOrderDetail().saveOrder();
+                            },
+                            error -> ctx.getSlashEvent().getHook()
+                                .sendMessage("Failed to delete original message: " + error.getMessage())
+                                .setEphemeral(true)
+                                .queue()
+                        );
+                    }, error -> ctx.getSlashEvent().getHook()
+                        .sendMessage("Failed to move order to completed channel: " + error.getMessage())
+                        .setEphemeral(true)
+                        .queue());
+            } else {
+                ctx.getSlashEvent().getHook()
+                    .sendMessage("Completed channel not found. Please check channel configuration.")
+                    .setEphemeral(true)
+                    .queue();
+            }
+        }, error -> ctx.getSlashEvent().getHook()
+            .sendMessage("Failed to find original order message: " + error.getMessage())
+            .setEphemeral(true)
+            .queue());
     }
 
     /**

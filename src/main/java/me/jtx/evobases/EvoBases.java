@@ -37,6 +37,7 @@ public class EvoBases {
     private final String token = dotenv.get("TOKEN");
     private final String baseShowcaseChannelId = dotenv.get("BASE_SHOWCASE_CHANNEL_ID");
     private final String orderChannelId = dotenv.get("ORDER_CHANNEL_ID");
+    private final String completedChannelId = dotenv.get("COMPLETED_CHANNEL_ID");
     private final String customActivityMessage = dotenv.get("CUSTOM_STATUS_MESSAGE");
     private final String menuTitle = dotenv.get("MENU_TITLE");
     private final String menuDescription = dotenv.get("MENU_DESCRIPTION");
@@ -183,6 +184,14 @@ public class EvoBases {
      */
     public String getOrderChannelId() {
         return orderChannelId;
+    }
+
+    /**
+     * Gets the completed channel ID.
+     * @return The channel ID for completed orders
+     */
+    public String getCompletedChannelId() {
+        return completedChannelId;
     }
 
     /**
