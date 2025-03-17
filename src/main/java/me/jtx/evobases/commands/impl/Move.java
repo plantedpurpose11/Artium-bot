@@ -20,7 +20,7 @@ public class Move extends Command {
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     public Move(EvoBases bot) {
-        super("move", Permission.UNKNOWN, null, "Move completed orders", null);
+        super("move", Permission.ADMINISTRATOR, null, "Move completed orders", null);
         this.bot = bot;
        // this.bot.getCommandManager().register(this);
 

@@ -25,7 +25,7 @@ public class OrderMenu extends Command {
      */
     public OrderMenu(EvoBases bot) {
         super("ticketmenu", 
-              Permission.UNKNOWN, 
+              Permission.ADMINISTRATOR,
               null, 
               "Display the order menu with current status and start button", 
               null);
